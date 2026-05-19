@@ -96,6 +96,7 @@ export default function Dashboard() {
       <nav>
         <Link href="/" className="logo">Sharp<span>d</span></Link>
         <div className="nav-right">
+          <Link href="/leaderboard" className="nav-link">Leaderboard</Link>
           <Link
             href={`/u/${profile?.username}`}
             style={{ fontSize: '13px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}
