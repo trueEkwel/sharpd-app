@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
   // Nächste 14 Tage
   const today = new Date()
   const future = new Date()
-  future.setDate(future.getDate() + 14)
+  future.setDate(future.getDate() + 9)
 
   const dateFrom = today.toISOString().split('T')[0]
   const dateTo = future.toISOString().split('T')[0]
@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    if (!res.ok) {
-      return NextResponse.json({ error: 'API error' }, { status: 500 })
+if (!res.ok) {
+      const text = await res.text()
+      return NextResponse.json({ error: 'API error', status: res.status, details: text, hasKey: !!process.env.FOOTBALL_DATA_API_KEY }, { status: 500 })
     }
 
     const data = await res.json()
