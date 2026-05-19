@@ -17,26 +17,34 @@ type LeaderboardEntry = {
   avgOdds: number
 }
 
+type AuthUser = { username: string } | null
+
 const MIN_PICKS = 5
 
 export default function Leaderboard() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'roi' | 'profit' | 'winrate'>('roi')
+  const [authUser, setAuthUser] = useState<AuthUser>(null)
 
   const supabase = createClient()
 
   useEffect(() => {
     const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles').select('username').eq('id', user.id).single()
+        if (profile) setAuthUser(profile)
+      }
+
       const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, username')
+        .from('profiles').select('id, username')
 
       if (!profiles) { setLoading(false); return }
 
       const { data: picks } = await supabase
-        .from('picks')
-        .select('user_id, odds, units, status, profit_loss')
+        .from('picks').select('user_id, odds, units, status, profit_loss')
 
       if (!picks) { setLoading(false); return }
 
@@ -82,14 +90,30 @@ export default function Leaderboard() {
       <nav>
         <Link href="/" className="logo">Sharp<span>d</span></Link>
         <div className="nav-right">
-          <Link href="/login" className="nav-link">Sign in</Link>
-          <Link href="/signup" className="btn-pill btn-primary">Sign up</Link>
+          <Link href="/leaderboard" style={{ fontSize: '13px', color: 'var(--green)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}>
+            Leaderboard
+          </Link>
+          {authUser ? (
+            <>
+              <Link
+                href={`/u/${authUser.username}`}
+                style={{ fontSize: '13px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}
+              >
+                @{authUser.username} ↗
+              </Link>
+              <Link href="/dashboard" className="btn-pill btn-primary">Dashboard</Link>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="nav-link">Sign in</Link>
+              <Link href="/signup" className="btn-pill btn-primary">Sign up</Link>
+            </>
+          )}
         </div>
       </nav>
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '100px 24px 60px' }}>
 
-        {/* HEADER */}
         <div style={{ marginBottom: '40px' }}>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--green)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
             Global Rankings
@@ -101,7 +125,6 @@ export default function Leaderboard() {
           </p>
         </div>
 
-        {/* FILTER */}
         <div style={{ display: 'flex', gap: '6px', marginBottom: '20px' }}>
           {(['roi', 'profit', 'winrate'] as const).map(f => (
             <button
@@ -122,10 +145,7 @@ export default function Leaderboard() {
           ))}
         </div>
 
-        {/* TABLE */}
         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
-
-          {/* Header row */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: '40px 1fr 70px 70px 80px 90px 80px',
@@ -159,64 +179,35 @@ export default function Leaderboard() {
                 href={`/u/${entry.username}`}
                 style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
               >
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '40px 1fr 70px 70px 80px 90px 80px',
-                  gap: '8px', padding: '14px 20px',
-                  borderBottom: '1px solid var(--border)',
-                  transition: 'background .12s',
-                  cursor: 'pointer',
-                  background: i === 0 ? 'rgba(34,197,94,0.03)' : 'transparent',
-                }}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '40px 1fr 70px 70px 80px 90px 80px',
+                    gap: '8px', padding: '14px 20px',
+                    borderBottom: '1px solid var(--border)',
+                    transition: 'background .12s', cursor: 'pointer',
+                    background: i === 0 ? 'rgba(34,197,94,0.03)' : 'transparent',
+                  }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg3)')}
                   onMouseLeave={e => (e.currentTarget.style.background = i === 0 ? 'rgba(34,197,94,0.03)' : 'transparent')}
                 >
-                  {/* Rank */}
                   <div style={{
                     fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 500,
                     color: i === 0 ? 'var(--green)' : i === 1 ? '#C0A060' : i === 2 ? '#9090A0' : 'var(--dim)',
                   }}>
                     {i === 0 ? '◈' : i + 1}
                   </div>
-
-                  {/* Username */}
                   <div>
-                    <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '1px' }}>
-                      @{entry.username}
-                    </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--dim)' }}>
-                      {entry.settledPicks} settled
-                    </div>
+                    <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '1px' }}>@{entry.username}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--dim)' }}>{entry.settledPicks} settled</div>
                   </div>
-
-                  {/* Picks */}
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center' }}>
-                    {entry.totalPicks}
-                  </div>
-
-                  {/* Winrate */}
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center' }}>
-                    {entry.winrate.toFixed(1)}%
-                  </div>
-
-                  {/* Avg Odds */}
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center', color: 'var(--muted)' }}>
-                    {entry.avgOdds.toFixed(2)}
-                  </div>
-
-                  {/* ROI */}
-                  <div style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 500, alignSelf: 'center',
-                    color: entry.roi >= 0 ? 'var(--green)' : 'var(--red)',
-                  }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center' }}>{entry.totalPicks}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center' }}>{entry.winrate.toFixed(1)}%</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center', color: 'var(--muted)' }}>{entry.avgOdds.toFixed(2)}</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 500, alignSelf: 'center', color: entry.roi >= 0 ? 'var(--green)' : 'var(--red)' }}>
                     {entry.roi >= 0 ? '+' : ''}{entry.roi.toFixed(1)}%
                   </div>
-
-                  {/* Units P/L */}
-                  <div style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center',
-                    color: entry.totalProfit >= 0 ? 'var(--green)' : 'var(--red)',
-                  }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', alignSelf: 'center', color: entry.totalProfit >= 0 ? 'var(--green)' : 'var(--red)' }}>
                     {entry.totalProfit >= 0 ? '+' : ''}{entry.totalProfit.toFixed(2)}u
                   </div>
                 </div>
@@ -225,7 +216,6 @@ export default function Leaderboard() {
           )}
         </div>
 
-        {/* INFO */}
         <div style={{
           marginTop: '16px', padding: '14px 18px',
           background: 'var(--bg2)', border: '1px solid var(--border)',
@@ -242,7 +232,6 @@ export default function Leaderboard() {
             </div>
           ))}
         </div>
-
       </div>
     </div>
   )
