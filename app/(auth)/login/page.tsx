@@ -68,6 +68,12 @@ export default function LoginPage() {
           </button>
         </form>
 
+        <p style={{ marginTop: '12px', textAlign: 'center', fontSize: '13px' }}>
+          <Link href="/forgot-password" style={{ color: 'var(--muted)', textDecoration: 'none' }}>
+            Forgot password?
+          </Link>
+        </p>
+
         {error && (
           <p style={{ marginTop: '16px', fontSize: '13px', color: 'var(--red)' }}>{error}</p>
         )}
