@@ -28,7 +28,6 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [picks, setPicks] = useState<Pick[]>([])
   const [loading, setLoading] = useState(true)
-  const [settling, setSettling] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -54,27 +53,6 @@ export default function Dashboard() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
-  }
-
-  const settlePick = async (pick: Pick, result: 'win' | 'loss' | 'void') => {
-    setSettling(pick.id)
-    const profit_loss =
-      result === 'win' ? parseFloat(((pick.odds - 1) * pick.units).toFixed(2)) :
-      result === 'loss' ? -pick.units :
-      0
-
-    const { error } = await supabase.from('picks').update({
-      status: result,
-      profit_loss,
-      settled_at: new Date().toISOString(),
-    }).eq('id', pick.id)
-
-    if (!error) {
-      setPicks(prev => prev.map(p =>
-        p.id === pick.id ? { ...p, status: result, profit_loss } : p
-      ))
-    }
-    setSettling(null)
   }
 
   const totalPicks = picks.length
@@ -195,30 +173,10 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Settlement Buttons — nur für pending picks */}
+                {/* Auto-settlement Info für pending picks */}
                 {pick.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--dim)', alignSelf: 'center', marginRight: '4px', fontFamily: 'var(--font-mono)' }}>
-                      Settle:
-                    </span>
-                    {(['win', 'loss', 'void'] as const).map(result => (
-                      <button
-                        key={result}
-                        onClick={() => settlePick(pick, result)}
-                        disabled={settling === pick.id}
-                        style={{
-                          padding: '4px 12px', borderRadius: '6px', fontSize: '11px',
-                          fontFamily: 'var(--font-mono)', fontWeight: 500, cursor: 'pointer',
-                          border: '1px solid',
-                          background: result === 'win' ? 'rgba(34,197,94,0.08)' : result === 'loss' ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.04)',
-                          color: result === 'win' ? 'var(--green)' : result === 'loss' ? 'var(--red)' : 'var(--muted)',
-                          borderColor: result === 'win' ? 'rgba(34,197,94,0.2)' : result === 'loss' ? 'rgba(248,113,113,0.2)' : 'var(--border)',
-                          opacity: settling === pick.id ? 0.5 : 1,
-                        }}
-                      >
-                        {result.toUpperCase()}
-                      </button>
-                    ))}
+                  <div style={{ marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--dim)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ color: 'var(--green)' }}>◈</span> Auto-settlement pending · Settles after match ends
                   </div>
                 )}
               </div>
