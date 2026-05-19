@@ -61,7 +61,8 @@ export default function Home() {
         <div className="nav-right">
           <a href="#how" className="nav-link">How it works</a>
           <a href="#features" className="nav-link">Features</a>
-          <a href="#waitlist" className="btn-pill btn-primary">Join waitlist</a>
+          <a href="/login" className="nav-link">Sign in</a>
+          <a href="/signup" className="btn-pill btn-primary">Sign up</a>
         </div>
       </nav>
 
