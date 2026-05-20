@@ -47,7 +47,10 @@ function determineResult(market: string, homeGoals: number, awayGoals: number): 
 
 export async function GET(request: NextRequest) {
   // Sicherheit: nur Vercel Cron oder interne Aufrufe
-  
+  const authHeader = request.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     // Alle pending Picks deren Match bereits begonnen hat
