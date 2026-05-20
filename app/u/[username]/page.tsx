@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 
 type Profile = {
   id: string
@@ -35,29 +36,24 @@ export default function PublicProfile() {
   const [picks, setPicks] = useState<Pick[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [copied, setCopied] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     const loadProfile = async () => {
       const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('username', username)
-        .single()
+        .from('profiles').select('*').eq('username', username).single()
 
       if (!profileData) { setNotFound(true); setLoading(false); return }
 
       const { data: picksData } = await supabase
-        .from('picks')
-        .select('*')
-        .eq('user_id', profileData.id)
+        .from('picks').select('*').eq('user_id', profileData.id)
         .order('created_at', { ascending: false })
 
       setProfile(profileData)
       setPicks(picksData || [])
       setLoading(false)
     }
-
     loadProfile()
   }, [username])
 
@@ -70,6 +66,31 @@ export default function PublicProfile() {
   const totalProfit = picks.reduce((sum, p) => sum + (p.profit_loss || 0), 0)
   const roi = totalUnitsStaked > 0 ? ((totalProfit / totalUnitsStaked) * 100).toFixed(1) : '—'
   const avgOdds = totalPicks > 0 ? (picks.reduce((sum, p) => sum + p.odds, 0) / totalPicks).toFixed(2) : '—'
+
+  // Chart data — kumulativer P/L über Zeit
+  const chartData = [...picks]
+    .filter(p => p.status !== 'pending' && p.profit_loss !== null)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .reduce((acc: any[], pick, i) => {
+      const prev = acc[i - 1]?.cumulative ?? 0
+      return [...acc, {
+        pick: i + 1,
+        cumulative: parseFloat((prev + (pick.profit_loss || 0)).toFixed(2)),
+        date: new Date(pick.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+      }]
+    }, [])
+
+  // Share
+  const handleShare = () => {
+    const roiStr = roi === '—' ? 'New account' : `${Number(roi) >= 0 ? '+' : ''}${roi}% ROI`
+    const wrStr = winrate === '—' ? '' : ` | ${winrate}% Winrate`
+    const text = `🎯 @${profile?.username} on Sharpd\n\n${roiStr}${wrStr} | ${totalPicks} picks\n\nAll picks verified & timestamped before kickoff.\nNo edits. No deletes. No fake screenshots.\n\n🔗 sharpd.bet/u/${profile?.username}`
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
+
+  const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out @${profile?.username}'s verified prediction record on Sharpd 🎯\n\nsharpd.bet/u/${profile?.username}`)}`
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -88,8 +109,6 @@ export default function PublicProfile() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
-
-      {/* NAV */}
       <nav>
         <Link href="/" className="logo">Sharp<span>d</span></Link>
         <div className="nav-right">
@@ -101,57 +120,51 @@ export default function PublicProfile() {
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '100px 24px 60px' }}>
 
         {/* PROFILE HEADER */}
-        <div style={{
-          background: 'var(--bg2)', border: '1px solid var(--border)',
-          borderRadius: '16px', padding: '32px', marginBottom: '16px',
-          position: 'relative', overflow: 'hidden'
-        }}>
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.4), transparent)'
-          }} />
+        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px', marginBottom: '16px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.4), transparent)' }} />
 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
-            {/* Avatar */}
-            <div style={{
-              width: '56px', height: '56px', borderRadius: '50%',
-              background: 'var(--green-bg)', border: '1px solid var(--green-border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontFamily: 'var(--font-mono)', fontSize: '18px', color: 'var(--green)',
-              flexShrink: 0
-            }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'var(--green-bg)', border: '1px solid var(--green-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: '18px', color: 'var(--green)', flexShrink: 0 }}>
               {profile?.username?.slice(0, 2).toUpperCase()}
             </div>
 
             <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--green)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '4px' }}>
-                Verified Predictor
-              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--green)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '4px' }}>Verified Predictor</div>
               <h1 style={{ fontSize: '24px', marginBottom: '4px' }}>@{profile?.username}</h1>
-              {profile?.bio && (
-                <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6', marginBottom: '8px' }}>
-                  {profile.bio}
-                </p>
-              )}
+              {profile?.bio && <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6', marginBottom: '8px' }}>{profile.bio}</p>}
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--dim)' }}>
                 Member since {new Date(profile?.created_at || '').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
               </p>
             </div>
 
-            {/* Verified badge */}
-            <div style={{
-              padding: '6px 12px', background: 'var(--green-bg)',
-              border: '1px solid var(--green-border)', borderRadius: '8px',
-              fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--green)',
-              letterSpacing: '.05em', fontWeight: 500
-            }}>
-              ◈ PUBLIC RECORD
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+              <div style={{ padding: '6px 12px', background: 'var(--green-bg)', border: '1px solid var(--green-border)', borderRadius: '8px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--green)', letterSpacing: '.05em', fontWeight: 500 }}>
+                ◈ PUBLIC RECORD
+              </div>
+
+              {/* SHARE BUTTONS */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={handleShare}
+                  style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontFamily: 'var(--font-mono)', cursor: 'pointer', border: '1px solid var(--border2)', background: copied ? 'var(--green-bg)' : 'var(--bg3)', color: copied ? 'var(--green)' : 'var(--muted)', transition: 'all .2s' }}
+                >
+                  {copied ? '✓ Copied!' : '⎘ Copy'}
+                </button>
+                <a
+                  href={tweetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontFamily: 'var(--font-mono)', cursor: 'pointer', border: '1px solid var(--border2)', background: 'var(--bg3)', color: 'var(--muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                >
+                  𝕏 Tweet
+                </a>
+              </div>
             </div>
           </div>
         </div>
 
         {/* STATS */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '16px' }}>
           {[
             { label: 'Picks', value: totalPicks.toString() },
             { label: 'Winrate', value: winrate === '—' ? '—' : `${winrate}%` },
@@ -159,32 +172,51 @@ export default function PublicProfile() {
             { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u` },
             { label: 'Avg Odds', value: avgOdds },
           ].map(stat => (
-            <div key={stat.label} style={{
-              background: 'var(--bg2)', border: '1px solid var(--border)',
-              borderRadius: '12px', padding: '14px 16px'
-            }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                {stat.label}
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 500,
-                color: stat.label === 'ROI' || stat.label === 'Units P/L'
-                  ? (stat.value.startsWith('+') ? 'var(--green)' : stat.value.startsWith('-') ? 'var(--red)' : 'var(--text)')
-                  : 'var(--text)'
-              }}>
+            <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{stat.label}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 500, color: stat.label === 'ROI' || stat.label === 'Units P/L' ? (stat.value.startsWith('+') ? 'var(--green)' : stat.value.startsWith('-') ? 'var(--red)' : 'var(--text)') : 'var(--text)' }}>
                 {stat.value}
               </div>
             </div>
           ))}
         </div>
 
+        {/* PROFIT CHART */}
+        {chartData.length >= 2 && (
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <span style={{ fontWeight: 500, fontSize: '14px' }}>Profit Graph</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--dim)' }}>Units P/L over time</span>
+            </div>
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 5 }}>
+                <XAxis dataKey="pick" tick={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: '#666' }} tickLine={false} axisLine={false} label={{ value: 'Pick #', position: 'insideBottomRight', offset: -5, style: { fontFamily: 'monospace', fontSize: 10, fill: '#555' } }} />
+                <YAxis tick={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: '#666' }} tickLine={false} axisLine={false} tickFormatter={v => `${v > 0 ? '+' : ''}${v}u`} />
+                <Tooltip
+                  contentStyle={{ background: '#111116', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px' }}
+                  labelStyle={{ color: '#666', marginBottom: '4px' }}
+                  formatter={(value: any) => [`${value > 0 ? '+' : ''}${value}u`, 'P/L']}
+                  labelFormatter={(label) => `Pick #${label} · ${chartData[label - 1]?.date || ''}`}
+                />
+                <ReferenceLine y={0} stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
+                <Line
+                  type="monotone"
+                  dataKey="cumulative"
+                  stroke="#22C55E"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, fill: '#22C55E', strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
         {/* PICKS */}
         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 500, fontSize: '14px' }}>Pick History</span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--dim)' }}>
-              Every pick is public · No edits · No deletes
-            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--dim)' }}>Every pick is public · No edits · No deletes</span>
           </div>
 
           {picks.length === 0 ? (
@@ -193,38 +225,22 @@ export default function PublicProfile() {
             </div>
           ) : (
             picks.map(pick => (
-              <div key={pick.id} style={{
-                padding: '16px 20px', borderBottom: '1px solid var(--border)',
-              }}>
+              <div key={pick.id} style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '3px' }}>
-                      {pick.match_name}
-                    </div>
+                    <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '3px' }}>{pick.match_name}</div>
                     <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: pick.analysis ? '8px' : '0' }}>
                       {pick.market} · @{pick.odds} · {pick.units}u
                       {pick.competition ? ` · ${pick.competition}` : ''}
                     </div>
                     {pick.analysis && (
-                      <div style={{
-                        fontSize: '12px', color: 'var(--muted)', lineHeight: '1.55',
-                        padding: '8px 12px', background: 'var(--bg3)',
-                        borderRadius: '8px', borderLeft: '2px solid var(--green-border)'
-                      }}>
+                      <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.55', padding: '8px 12px', background: 'var(--bg3)', borderRadius: '8px', borderLeft: '2px solid var(--green-border)' }}>
                         {pick.analysis}
                       </div>
                     )}
                   </div>
-
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '3px 10px',
-                      borderRadius: '4px', fontWeight: 500, marginBottom: '4px',
-                      display: 'inline-block',
-                      background: pick.status === 'win' ? 'rgba(34,197,94,0.1)' : pick.status === 'loss' ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)',
-                      color: pick.status === 'win' ? 'var(--green)' : pick.status === 'loss' ? 'var(--red)' : 'var(--muted)',
-                      border: `1px solid ${pick.status === 'win' ? 'rgba(34,197,94,0.25)' : pick.status === 'loss' ? 'rgba(248,113,113,0.25)' : 'var(--border)'}`,
-                    }}>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '3px 10px', borderRadius: '4px', fontWeight: 500, marginBottom: '4px', display: 'inline-block', background: pick.status === 'win' ? 'rgba(34,197,94,0.1)' : pick.status === 'loss' ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)', color: pick.status === 'win' ? 'var(--green)' : pick.status === 'loss' ? 'var(--red)' : 'var(--muted)', border: `1px solid ${pick.status === 'win' ? 'rgba(34,197,94,0.25)' : pick.status === 'loss' ? 'rgba(248,113,113,0.25)' : 'var(--border)'}` }}>
                       {pick.status.toUpperCase()}
                     </div>
                     {pick.profit_loss !== null && (
@@ -242,22 +258,14 @@ export default function PublicProfile() {
           )}
         </div>
 
-        {/* CTA für nicht eingeloggte User */}
-        <div style={{
-          marginTop: '24px', padding: '24px', background: 'var(--bg2)',
-          border: '1px solid var(--border)', borderRadius: '16px',
-          textAlign: 'center'
-        }}>
+        {/* CTA */}
+        <div style={{ marginTop: '24px', padding: '24px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', textAlign: 'center' }}>
           <p style={{ fontSize: '14px', color: 'var(--muted)', marginBottom: '16px' }}>
             Build your own verified prediction record on Sharpd.
           </p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
             <Link href="/signup" className="btn-pill btn-primary">Create free account</Link>
-            <Link href="/" style={{
-              padding: '9px 20px', borderRadius: '999px', fontSize: '13px',
-              color: 'var(--muted)', textDecoration: 'none',
-              border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center'
-            }}>
+            <Link href="/" style={{ padding: '9px 20px', borderRadius: '999px', fontSize: '13px', color: 'var(--muted)', textDecoration: 'none', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center' }}>
               Learn more
             </Link>
           </div>
