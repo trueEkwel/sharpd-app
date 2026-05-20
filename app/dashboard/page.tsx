@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Nav } from '@/components/Nav'
 
 type Profile = {
   username: string
@@ -50,11 +51,6 @@ export default function Dashboard() {
     loadData()
   }, [])
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-  }
-
   const totalPicks = picks.length
   const settledPicks = picks.filter(p => p.status !== 'pending')
   const wins = picks.filter(p => p.status === 'win').length
@@ -65,34 +61,18 @@ export default function Dashboard() {
 
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>Loading...</p>
+      <p style={{ color: 'var(--muted)', fontFamily: 'var(--font-geist-mono)', fontSize: '13px' }}>Loading...</p>
     </div>
   )
 
   return (
     <div style={{ minHeight: '100vh' }}>
-      <nav>
-        <Link href="/" className="logo">Sharp<span>d</span></Link>
-        <div className="nav-right">
-          <Link href="/leaderboard" className="nav-link">Leaderboard</Link>
-          <Link href="/settings" className="nav-link">Settings</Link>
-          <Link
-            href={`/u/${profile?.username}`}
-            style={{ fontSize: '13px', color: 'var(--muted)', fontFamily: 'var(--font-mono)', textDecoration: 'none' }}
-          >
-            @{profile?.username} ↗
-          </Link>
-          <Link href="/pick/new" className="btn-pill btn-primary">+ Post Pick</Link>
-          <button onClick={handleLogout} style={{ fontSize: '13px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
-            Logout
-          </button>
-        </div>
-      </nav>
+      <Nav />
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '100px 24px 60px' }}>
 
         <div style={{ marginBottom: '40px' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--green)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: 'var(--green)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
             Your record
           </div>
           <h1 style={{ fontSize: '32px', marginBottom: '4px' }}>@{profile?.username}</h1>
@@ -109,11 +89,11 @@ export default function Dashboard() {
             { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u` },
           ].map(stat => (
             <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+              <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
                 {stat.label}
               </div>
               <div style={{
-                fontFamily: 'var(--font-mono)', fontSize: '22px', fontWeight: 500,
+                fontFamily: 'var(--font-geist-mono)', fontSize: '22px', fontWeight: 500,
                 color: stat.label === 'ROI' || stat.label === 'Units P/L'
                   ? (stat.value.startsWith('+') ? 'var(--green)' : stat.value.startsWith('-') ? 'var(--red)' : 'var(--text)')
                   : 'var(--text)'
@@ -127,7 +107,7 @@ export default function Dashboard() {
         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontWeight: 500, fontSize: '14px' }}>Pick History</span>
-            <Link href="/pick/new" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--green)', textDecoration: 'none' }}>
+            <Link href="/pick/new" style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: 'var(--green)', textDecoration: 'none' }}>
               + New Pick
             </Link>
           </div>
@@ -157,7 +137,7 @@ export default function Dashboard() {
 
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{
-                      fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '3px 10px',
+                      fontFamily: 'var(--font-geist-mono)', fontSize: '11px', padding: '3px 10px',
                       borderRadius: '4px', fontWeight: 500, marginBottom: '4px', display: 'inline-block',
                       background: pick.status === 'win' ? 'rgba(34,197,94,0.1)' : pick.status === 'loss' ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)',
                       color: pick.status === 'win' ? 'var(--green)' : pick.status === 'loss' ? 'var(--red)' : 'var(--muted)',
@@ -166,16 +146,15 @@ export default function Dashboard() {
                       {pick.status.toUpperCase()}
                     </div>
                     {pick.profit_loss !== null && (
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: pick.profit_loss >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                      <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: pick.profit_loss >= 0 ? 'var(--green)' : 'var(--red)' }}>
                         {pick.profit_loss >= 0 ? '+' : ''}{pick.profit_loss.toFixed(2)}u
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Auto-settlement Info für pending picks */}
                 {pick.status === 'pending' && (
-                  <div style={{ marginTop: '8px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--dim)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ marginTop: '8px', fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <span style={{ color: 'var(--green)' }}>◈</span> Auto-settlement pending · Settles after match ends
                   </div>
                 )}
