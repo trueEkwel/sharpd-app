@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { Nav } from "@/components/Nav";
 import "./globals.css";
 
 const serif = Instrument_Serif({
@@ -49,8 +51,11 @@ export default function RootLayout({
       <body
         className={`${serif.variable} ${sans.variable} ${mono.variable}`}
       >
-        {children}
-        <Analytics />
+        <ThemeProvider>
+          <Nav />
+          {children}
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   );
