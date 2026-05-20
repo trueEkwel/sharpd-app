@@ -40,12 +40,6 @@ function determineResult(market: string, homeGoals: number, awayGoals: number): 
 }
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const secret = searchParams.get('secret')
-  if (secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
     const { data: pendingPicks, error } = await supabase
       .from('picks')
