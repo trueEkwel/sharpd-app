@@ -2,18 +2,23 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Nav } from '@/components/Nav'
+import { Avatar } from '@/components/Avatar'
 
 export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [form, setForm] = useState({ username: '', display_name: '', bio: '' })
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -21,12 +26,36 @@ export default function Settings() {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
+      setUserId(user.id)
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (profile) setForm({ username: profile.username || '', display_name: profile.display_name || '', bio: profile.bio || '' })
+      if (profile) {
+        setAvatarUrl(profile.avatar_url ?? null)
+        setForm({ username: profile.username || '', display_name: profile.display_name || '', bio: profile.bio || '' })
+      }
       setLoading(false)
     }
     load()
   }, [])
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !userId) return
+    if (file.size > 2 * 1024 * 1024) { setMessage('Image must be under 2MB.'); setIsError(true); return }
+    setUploading(true)
+    setMessage('')
+    const path = `${userId}/avatar.jpg`
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    if (uploadError) { setMessage(uploadError.message); setIsError(true); setUploading(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+    await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userId)
+    setAvatarUrl(`${publicUrl}?v=${Date.now()}`)
+    setMessage('Avatar updated successfully.')
+    setIsError(false)
+    setUploading(false)
+    e.target.value = ''
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,6 +91,32 @@ export default function Settings() {
 
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Avatar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', paddingBottom: '20px', borderBottom: '1px solid var(--border)' }}>
+              <div
+                style={{ position: 'relative', cursor: 'pointer', flexShrink: 0 }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Avatar url={avatarUrl} username={form.username || '?'} size={80} />
+                <div
+                  style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity .2s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.opacity = '1' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.opacity = '0' }}
+                >
+                  <span style={{ color: '#fff', fontSize: '10px', fontFamily: 'var(--font-geist-mono)', letterSpacing: '.06em' }}>EDIT</span>
+                </div>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>Profile Picture</div>
+                <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.6', margin: 0 }}>
+                  Click to upload · Max 2MB<br />JPG, PNG or WebP
+                </p>
+                {uploading && <div style={{ fontSize: '11px', color: 'var(--green)', fontFamily: 'var(--font-geist-mono)', marginTop: '6px' }}>Uploading...</div>}
+              </div>
+            </div>
+
             <div>
               <label style={labelStyle}>Username</label>
               <div style={{ position: 'relative' }}>
