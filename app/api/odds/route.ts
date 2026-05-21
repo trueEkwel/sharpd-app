@@ -1,0 +1,97 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+// Maps football-data.org competition codes to The Odds API sport keys
+const SPORT_MAP: Record<string, string> = {
+  PL: 'soccer_epl',
+  BL1: 'soccer_germany_bundesliga',
+  PD: 'soccer_spain_la_liga',
+  SA: 'soccer_italy_serie_a',
+  FL1: 'soccer_france_ligue_one',
+  CL: 'soccer_uefa_champions_league',
+  EL: 'soccer_uefa_europa_league',
+  MLS: 'soccer_usa_mls',
+}
+
+type BookmakerOdds = { name: string; price: number }
+type MarketOdds = { best: number; bookmakers: BookmakerOdds[] }
+
+function addOdds(markets: Record<string, MarketOdds>, key: string, bookmakerName: string, price: number) {
+  if (!markets[key]) {
+    markets[key] = { best: price, bookmakers: [{ name: bookmakerName, price }] }
+  } else {
+    markets[key].bookmakers.push({ name: bookmakerName, price })
+    if (price > markets[key].best) markets[key].best = price
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const home = searchParams.get('home') || ''
+  const away = searchParams.get('away') || ''
+  const date = searchParams.get('date') || ''
+  const competition = searchParams.get('competition') || ''
+
+  if (!home || !away || !date) {
+    return NextResponse.json({ found: false, markets: {} })
+  }
+
+  const sportKey = SPORT_MAP[competition.toUpperCase()] ?? 'soccer_epl'
+
+  try {
+    const url = new URL(`https://api.the-odds-api.com/v4/sports/${sportKey}/odds`)
+    url.searchParams.set('apiKey', process.env.ODDS_API_KEY || '')
+    url.searchParams.set('regions', 'eu')
+    url.searchParams.set('markets', 'h2h,totals,btts')
+    url.searchParams.set('oddsFormat', 'decimal')
+    url.searchParams.set('commenceTimeFrom', `${date}T00:00:00Z`)
+    url.searchParams.set('commenceTimeTo', `${date}T23:59:59Z`)
+
+    const res = await fetch(url.toString(), { next: { revalidate: 300 } })
+    if (!res.ok) return NextResponse.json({ found: false, markets: {} })
+
+    const games: any[] = await res.json()
+    if (!Array.isArray(games)) return NextResponse.json({ found: false, markets: {} })
+
+    // Fuzzy-match game by team name
+    const homeLower = home.toLowerCase()
+    const awayLower = away.toLowerCase()
+    const game = games.find(g => {
+      const h = (g.home_team || '').toLowerCase()
+      const a = (g.away_team || '').toLowerCase()
+      return (h.includes(homeLower) || homeLower.includes(h)) &&
+             (a.includes(awayLower) || awayLower.includes(a))
+    })
+
+    if (!game) return NextResponse.json({ found: false, markets: {} })
+
+    const markets: Record<string, MarketOdds> = {}
+
+    for (const bookmaker of game.bookmakers || []) {
+      const bName: string = bookmaker.title
+      for (const market of bookmaker.markets || []) {
+        if (market.key === 'h2h') {
+          for (const outcome of market.outcomes || []) {
+            if (outcome.name === game.home_team) addOdds(markets, 'Home Win', bName, outcome.price)
+            else if (outcome.name === game.away_team) addOdds(markets, 'Away Win', bName, outcome.price)
+            else if (outcome.name === 'Draw') addOdds(markets, 'Draw', bName, outcome.price)
+          }
+        } else if (market.key === 'totals') {
+          for (const outcome of market.outcomes || []) {
+            const line = outcome.point ?? outcome.description ?? ''
+            const label = `${outcome.name} ${line}`.trim()
+            addOdds(markets, label, bName, outcome.price)
+          }
+        } else if (market.key === 'btts') {
+          for (const outcome of market.outcomes || []) {
+            const label = outcome.name === 'Yes' ? 'BTTS' : 'BTTS No'
+            addOdds(markets, label, bName, outcome.price)
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ found: true, markets })
+  } catch {
+    return NextResponse.json({ found: false, markets: {} })
+  }
+}
