@@ -7,8 +7,11 @@ const SPORT_MAP: Record<string, string> = {
   PD: 'soccer_spain_la_liga',
   SA: 'soccer_italy_serie_a',
   FL1: 'soccer_france_ligue_one',
-  CL: 'soccer_uefa_champions_league',
-  EL: 'soccer_uefa_europa_league',
+  CL: 'soccer_uefa_champs_league',
+  EL: 'soccer_europa_league',
+  PPL: 'soccer_portugal_primeira_liga',
+  DED: 'soccer_netherlands_eredivisie',
+  BSA: 'soccer_brazil_campeonato',
   MLS: 'soccer_usa_mls',
 }
 
@@ -60,6 +63,11 @@ export async function GET(request: NextRequest) {
 
     const games: any[] = await res.json()
     if (!Array.isArray(games)) return NextResponse.json({ found: false, markets: {} })
+
+    if (games.length === 0) {
+      console.log(`[odds] no events found for sportKey=${sportKey}`)
+      return NextResponse.json({ found: false, markets: {} })
+    }
 
     console.log(`[odds] sportKey=${sportKey} events=${games.length}`)
     console.log(`[odds] searching for: home="${normalise(home)}" away="${normalise(away)}"`)
