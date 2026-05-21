@@ -36,7 +36,7 @@ type TabEntry = {
 
 type Tab = 'alltime' | 'week' | 'month' | 'streak' | 'last10' | 'followed'
 
-const MIN_ALL = 5
+const MIN_ALL = 1
 const MIN_WEEK = 3
 const MIN_MONTH = 5
 const MIN_STREAK = 3
