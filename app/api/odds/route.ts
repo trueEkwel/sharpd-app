@@ -24,14 +24,25 @@ function addOdds(markets: Record<string, MarketOdds>, key: string, bookmakerName
   }
 }
 
+const STRIP_SUFFIXES = /\s+(fc|cf|afc|united|city|sc|ac|bc|if|bk|sk|fk|rfc)$/i
+
+function normalise(name: string): string {
+  return name.toLowerCase().replace(STRIP_SUFFIXES, '').trim()
+}
+
+function teamMatch(a: string, b: string): boolean {
+  const na = normalise(a)
+  const nb = normalise(b)
+  return na.includes(nb) || nb.includes(na)
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const home = searchParams.get('home') || ''
   const away = searchParams.get('away') || ''
-  const date = searchParams.get('date') || ''
   const competition = searchParams.get('competition') || ''
 
-  if (!home || !away || !date) {
+  if (!home || !away) {
     return NextResponse.json({ found: false, markets: {} })
   }
 
@@ -43,8 +54,6 @@ export async function GET(request: NextRequest) {
     url.searchParams.set('regions', 'eu')
     url.searchParams.set('markets', 'h2h,totals,btts')
     url.searchParams.set('oddsFormat', 'decimal')
-    url.searchParams.set('commenceTimeFrom', `${date}T00:00:00Z`)
-    url.searchParams.set('commenceTimeTo', `${date}T23:59:59Z`)
 
     const res = await fetch(url.toString(), { next: { revalidate: 300 } })
     if (!res.ok) return NextResponse.json({ found: false, markets: {} })
@@ -52,15 +61,9 @@ export async function GET(request: NextRequest) {
     const games: any[] = await res.json()
     if (!Array.isArray(games)) return NextResponse.json({ found: false, markets: {} })
 
-    // Fuzzy-match game by team name
-    const homeLower = home.toLowerCase()
-    const awayLower = away.toLowerCase()
-    const game = games.find(g => {
-      const h = (g.home_team || '').toLowerCase()
-      const a = (g.away_team || '').toLowerCase()
-      return (h.includes(homeLower) || homeLower.includes(h)) &&
-             (a.includes(awayLower) || awayLower.includes(a))
-    })
+    const game = games.find(g =>
+      teamMatch(g.home_team || '', home) && teamMatch(g.away_team || '', away)
+    )
 
     if (!game) return NextResponse.json({ found: false, markets: {} })
 
