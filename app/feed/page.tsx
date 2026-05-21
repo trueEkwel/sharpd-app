@@ -30,13 +30,30 @@ type VoteState = { up: number; down: number; userVote: VoteValue }
 type TrendingPick = FeedPick & { upvotes: number }
 type HotPredictor = { username: string; avatar_url: string | null; roi: number; settledPicks: number }
 
+type DiscussionComment = {
+  id: string
+  pick_id: string
+  user_id: string
+  content: string
+  created_at: string
+  commenter_username: string
+  commenter_avatar: string | null
+  pick_match_name: string
+  pick_market: string
+  pick_odds: number
+  pick_owner_username: string
+}
+
 export default function Feed() {
   const router = useRouter()
+  const [feedTab, setFeedTab] = useState<'picks' | 'discussion'>('picks')
   const [picks, setPicks] = useState<FeedPick[]>([])
+  const [discussions, setDiscussions] = useState<DiscussionComment[]>([])
   const [loading, setLoading] = useState(true)
   const [hasFollows, setHasFollows] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [pickVotes, setPickVotes] = useState<Record<string, VoteState>>({})
+  const [discVotes, setDiscVotes] = useState<Record<string, { up: number; userVote: 0 | 1 }>>({})
   const [trendingPicks, setTrendingPicks] = useState<TrendingPick[]>([])
   const [hotPredictors, setHotPredictors] = useState<HotPredictor[]>([])
   const supabase = createClient()
@@ -51,7 +68,6 @@ export default function Feed() {
       const h24ago = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
       const d7ago = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-      // Load all in parallel
       const [
         { data: follows },
         { data: recentPicks },
@@ -108,7 +124,6 @@ export default function Feed() {
         }
       }
 
-      // Feed picks from followed users
       if (!follows || follows.length === 0) {
         setHasFollows(false)
         setLoading(false)
@@ -118,20 +133,26 @@ export default function Feed() {
       setHasFollows(true)
       const followingIds = follows.map((f: { following_id: string }) => f.following_id)
 
-      const [{ data: rawPicks }, { data: profilesData }] = await Promise.all([
+      // Load picks + profiles + discussion comments in parallel
+      const [{ data: rawPicks }, { data: profilesData }, { data: rawDiscComments }] = await Promise.all([
         supabase.from('picks')
           .select('id, match_name, market, odds, units, status, created_at, competition, analysis, profit_loss, user_id')
           .in('user_id', followingIds)
           .order('created_at', { ascending: false })
           .limit(100),
         supabase.from('profiles').select('id, username, avatar_url').in('id', followingIds),
+        supabase.from('comments')
+          .select('id, pick_id, user_id, content, created_at, profiles(username, avatar_url)')
+          .in('user_id', followingIds)
+          .order('created_at', { ascending: false })
+          .limit(50),
       ])
 
+      // Merge picks with profiles
       const profileMap: Record<string, { username: string; avatar_url: string | null }> = {}
       profilesData?.forEach((p: { id: string; username: string; avatar_url: string | null }) => {
         profileMap[p.id] = { username: p.username, avatar_url: p.avatar_url }
       })
-
       const merged = (rawPicks || []).map(p => ({
         ...p,
         username: profileMap[p.user_id]?.username || '',
@@ -139,6 +160,7 @@ export default function Feed() {
       }))
       setPicks(merged)
 
+      // Pick votes
       if (rawPicks && rawPicks.length > 0) {
         const pickIds = rawPicks.map(p => p.id)
         const { data: votesData } = await supabase.from('pick_votes').select('pick_id, user_id, vote').in('pick_id', pickIds)
@@ -151,6 +173,53 @@ export default function Feed() {
             if (v.user_id === user.id) vm[v.pick_id].userVote = v.vote as VoteValue
           }
           setPickVotes(vm)
+        }
+      }
+
+      // Build discussion comments
+      if (rawDiscComments && rawDiscComments.length > 0) {
+        const discPickIds = [...new Set(rawDiscComments.map((c: { pick_id: string }) => c.pick_id))]
+        const { data: discPicks } = await supabase.from('picks').select('id, match_name, market, odds, user_id').in('id', discPickIds)
+
+        const pickRefMap: Record<string, { match_name: string; market: string; odds: number; owner_user_id: string }> = {}
+        for (const p of discPicks ?? []) {
+          pickRefMap[p.id] = { match_name: p.match_name, market: p.market, odds: p.odds, owner_user_id: p.user_id }
+        }
+
+        const ownerIds = [...new Set(Object.values(pickRefMap).map(p => p.owner_user_id))]
+        const { data: ownerProfs } = ownerIds.length > 0
+          ? await supabase.from('profiles').select('id, username').in('id', ownerIds)
+          : { data: [] }
+        const ownerMap: Record<string, string> = {}
+        for (const p of ownerProfs ?? []) ownerMap[p.id] = p.username
+
+        type RawComment = { id: string; pick_id: string; user_id: string; content: string; created_at: string; profiles: { username: string; avatar_url: string | null } | null }
+        const discMerged: DiscussionComment[] = (rawDiscComments as unknown as RawComment[]).map(c => ({
+          id: c.id,
+          pick_id: c.pick_id,
+          user_id: c.user_id,
+          content: c.content,
+          created_at: c.created_at,
+          commenter_username: c.profiles?.username ?? '',
+          commenter_avatar: c.profiles?.avatar_url ?? null,
+          pick_match_name: pickRefMap[c.pick_id]?.match_name ?? '',
+          pick_market: pickRefMap[c.pick_id]?.market ?? '',
+          pick_odds: pickRefMap[c.pick_id]?.odds ?? 0,
+          pick_owner_username: ownerMap[pickRefMap[c.pick_id]?.owner_user_id ?? ''] ?? '',
+        }))
+        setDiscussions(discMerged)
+
+        // Comment votes
+        const commentIds = rawDiscComments.map((c: { id: string }) => c.id)
+        const { data: cvData } = await supabase.from('comment_votes').select('comment_id, user_id, vote').in('comment_id', commentIds)
+        if (cvData) {
+          const cvm: Record<string, { up: number; userVote: 0 | 1 }> = {}
+          for (const v of cvData) {
+            if (!cvm[v.comment_id]) cvm[v.comment_id] = { up: 0, userVote: 0 }
+            if (v.vote === 1) cvm[v.comment_id].up++
+            if (v.user_id === user.id) cvm[v.comment_id].userVote = 1
+          }
+          setDiscVotes(cvm)
         }
       }
 
@@ -175,19 +244,46 @@ export default function Feed() {
     }
   }
 
+  const handleDiscVote = async (commentId: string) => {
+    if (!currentUserId) return
+    const cur = discVotes[commentId] ?? { up: 0, userVote: 0 as 0 | 1 }
+    if (cur.userVote === 1) {
+      setDiscVotes(prev => ({ ...prev, [commentId]: { up: cur.up - 1, userVote: 0 } }))
+      await supabase.from('comment_votes').delete().eq('comment_id', commentId).eq('user_id', currentUserId)
+    } else {
+      setDiscVotes(prev => ({ ...prev, [commentId]: { up: cur.up + 1, userVote: 1 } }))
+      await supabase.from('comment_votes').insert({ comment_id: commentId, user_id: currentUserId, vote: 1 })
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh' }}>
       <Nav />
       <div style={{ maxWidth: '700px', margin: '0 auto', padding: '100px 24px 60px' }}>
 
-        <div style={{ marginBottom: '32px' }}>
+        <div style={{ marginBottom: '24px' }}>
           <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: 'var(--green)', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: '8px' }}>Your Network</div>
           <h1 style={{ fontSize: '36px', marginBottom: '8px' }}>Feed</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '14px' }}>Latest picks from predictors you follow.</p>
+          <p style={{ color: 'var(--muted)', fontSize: '14px' }}>Latest activity from predictors you follow.</p>
         </div>
 
-        {/* Trending section */}
-        {!loading && (trendingPicks.length > 0 || hotPredictors.length > 0) && (
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '24px' }}>
+          {(['picks', 'discussion'] as const).map(t => (
+            <button key={t} onClick={() => setFeedTab(t)} style={{
+              padding: '6px 18px', borderRadius: '8px', fontSize: '13px',
+              fontFamily: 'var(--font-geist-mono)', fontWeight: 500, cursor: 'pointer', border: '1px solid',
+              background: feedTab === t ? 'var(--green-bg)' : 'transparent',
+              color: feedTab === t ? 'var(--green)' : 'var(--muted)',
+              borderColor: feedTab === t ? 'var(--green-border)' : 'var(--border)', transition: 'all .15s',
+            }}>
+              {t === 'picks' ? 'Picks' : 'Discussion'}
+            </button>
+          ))}
+        </div>
+
+        {/* Trending section (Picks tab only) */}
+        {feedTab === 'picks' && !loading && (trendingPicks.length > 0 || hotPredictors.length > 0) && (
           <div style={{ marginBottom: '32px' }}>
             {trendingPicks.length > 0 && (
               <div style={{ marginBottom: '20px' }}>
@@ -209,7 +305,6 @@ export default function Feed() {
                 </div>
               </div>
             )}
-
             {hotPredictors.length > 0 && (
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '10px' }}>⚡ Hot Predictors · 7-Day ROI</div>
@@ -240,76 +335,126 @@ export default function Feed() {
         ) : !hasFollows ? (
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '60px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: '32px', marginBottom: '16px' }}>◈</div>
-            <p style={{ fontWeight: 500, marginBottom: '8px', fontSize: '16px' }}>Your feed is empty</p>
+            <p style={{ fontWeight: 600, marginBottom: '8px', fontSize: '16px' }}>Your feed is empty</p>
             <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '24px', lineHeight: '1.6' }}>
               Follow some predictors to see their picks here
             </p>
             <Link href="/leaderboard" className="btn-pill btn-primary">Browse leaderboard</Link>
           </div>
-        ) : picks.length === 0 ? (
-          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '60px 24px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--muted)', fontSize: '14px' }}>No picks from followed predictors yet.</p>
-          </div>
+        ) : feedTab === 'picks' ? (
+          picks.length === 0 ? (
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '60px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>📭</div>
+              <p style={{ fontWeight: 600, fontSize: '16px', marginBottom: '8px' }}>No picks yet</p>
+              <p style={{ color: 'var(--muted)', fontSize: '14px' }}>No picks from followed predictors yet.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {picks.map(pick => {
+                const pv = pickVotes[pick.id]
+                const net = (pv?.up ?? 0) - (pv?.down ?? 0)
+                return (
+                  <div key={pick.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', position: 'relative', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.2), transparent)' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                      <Avatar url={pick.avatar_url} username={pick.username} size={32} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Link href={`/u/${pick.username}`} style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: 'var(--green)', textDecoration: 'none', fontWeight: 500 }}>
+                          @{pick.username}
+                        </Link>
+                        <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)' }}>
+                          {new Date(pick.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '3px' }}>{pick.match_name}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: pick.analysis ? '8px' : '0' }}>
+                          {pick.market} · @{pick.odds} · {pick.units}u{pick.competition ? ` · ${pick.competition}` : ''}
+                        </div>
+                        {pick.analysis && (
+                          <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.55', padding: '8px 12px', background: 'var(--bg3)', borderRadius: '8px', borderLeft: '2px solid var(--green-border)' }}>
+                            {pick.analysis}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px' }}>
+                          <button onClick={() => handlePickVote(pick.id, 1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', cursor: 'pointer', border: '1px solid', borderColor: pv?.userVote === 1 ? 'var(--green-border)' : 'var(--border)', background: pv?.userVote === 1 ? 'var(--green-bg)' : 'transparent', color: pv?.userVote === 1 ? 'var(--green)' : 'var(--dim)', transition: 'all .15s' }}>▲ {pv?.up ?? 0}</button>
+                          <button onClick={() => handlePickVote(pick.id, -1)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', cursor: 'pointer', border: '1px solid', borderColor: pv?.userVote === -1 ? 'rgba(248,113,113,0.25)' : 'var(--border)', background: pv?.userVote === -1 ? 'rgba(248,113,113,0.1)' : 'transparent', color: pv?.userVote === -1 ? 'var(--red)' : 'var(--dim)', transition: 'all .15s' }}>▼ {pv?.down ?? 0}</button>
+                          <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: 'var(--dim)' }}>{net > 0 ? `+${net}` : net}</span>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', padding: '3px 10px', borderRadius: '4px', fontWeight: 500, marginBottom: '4px', display: 'inline-block', background: pick.status === 'win' ? 'rgba(34,197,94,0.1)' : pick.status === 'loss' ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)', color: pick.status === 'win' ? 'var(--green)' : pick.status === 'loss' ? 'var(--red)' : 'var(--muted)', border: `1px solid ${pick.status === 'win' ? 'rgba(34,197,94,0.25)' : pick.status === 'loss' ? 'rgba(248,113,113,0.25)' : 'var(--border)'}` }}>
+                          {pick.status.toUpperCase()}
+                        </div>
+                        {pick.profit_loss !== null && (
+                          <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: pick.profit_loss >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                            {pick.profit_loss >= 0 ? '+' : ''}{pick.profit_loss.toFixed(2)}u
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {picks.map(pick => {
-              const pv = pickVotes[pick.id]
-              const net = (pv?.up ?? 0) - (pv?.down ?? 0)
-              return (
-                <div key={pick.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', position: 'relative', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.2), transparent)' }} />
+          /* Discussion tab */
+          discussions.length === 0 ? (
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '60px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>💬</div>
+              <p style={{ fontWeight: 600, fontSize: '16px', marginBottom: '8px' }}>No discussion yet</p>
+              <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6' }}>
+                No discussion from people you follow yet
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {discussions.map(comment => {
+                const cv = discVotes[comment.id]
+                return (
+                  <div key={comment.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                    {/* Author header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                      <Avatar url={comment.commenter_avatar} username={comment.commenter_username} size={32} />
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Link href={`/u/${comment.commenter_username}`} style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: 'var(--green)', textDecoration: 'none', fontWeight: 500 }}>
+                          @{comment.commenter_username}
+                        </Link>
+                        <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)' }}>
+                          {new Date(comment.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDiscVote(comment.id)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', cursor: currentUserId ? 'pointer' : 'default', border: '1px solid', borderColor: cv?.userVote === 1 ? 'var(--green-border)' : 'var(--border)', background: cv?.userVote === 1 ? 'var(--green-bg)' : 'transparent', color: cv?.userVote === 1 ? 'var(--green)' : 'var(--dim)', transition: 'all .15s', flexShrink: 0 }}
+                      >▲ {cv?.up ?? 0}</button>
+                    </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                    <Avatar url={pick.avatar_url} username={pick.username} size={32} />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Link href={`/u/${pick.username}`} style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: 'var(--green)', textDecoration: 'none', fontWeight: 500 }}>
-                        @{pick.username}
+                    {/* Comment text */}
+                    <p style={{ fontSize: '13px', color: 'var(--text)', lineHeight: '1.6', margin: '0 0 12px 0' }}>
+                      {comment.content}
+                    </p>
+
+                    {/* Pick reference */}
+                    {comment.pick_match_name && (
+                      <Link href={`/u/${comment.pick_owner_username}`} style={{ textDecoration: 'none', display: 'block' }}>
+                        <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px' }}>
+                          <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px' }}>
+                            On pick by @{comment.pick_owner_username}
+                          </div>
+                          <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '2px' }}>{comment.pick_match_name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{comment.pick_market} · @{comment.pick_odds}</div>
+                        </div>
                       </Link>
-                      <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)' }}>
-                        {new Date(pick.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </span>
-                    </div>
+                    )}
                   </div>
-
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '3px' }}>{pick.match_name}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: pick.analysis ? '8px' : '0' }}>
-                        {pick.market} · @{pick.odds} · {pick.units}u{pick.competition ? ` · ${pick.competition}` : ''}
-                      </div>
-                      {pick.analysis && (
-                        <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.55', padding: '8px 12px', background: 'var(--bg3)', borderRadius: '8px', borderLeft: '2px solid var(--green-border)' }}>
-                          {pick.analysis}
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px' }}>
-                        <button
-                          onClick={() => handlePickVote(pick.id, 1)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', cursor: 'pointer', border: '1px solid', borderColor: pv?.userVote === 1 ? 'var(--green-border)' : 'var(--border)', background: pv?.userVote === 1 ? 'var(--green-bg)' : 'transparent', color: pv?.userVote === 1 ? 'var(--green)' : 'var(--dim)', transition: 'all .15s' }}
-                        >▲ {pv?.up ?? 0}</button>
-                        <button
-                          onClick={() => handlePickVote(pick.id, -1)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', cursor: 'pointer', border: '1px solid', borderColor: pv?.userVote === -1 ? 'rgba(248,113,113,0.25)' : 'var(--border)', background: pv?.userVote === -1 ? 'rgba(248,113,113,0.1)' : 'transparent', color: pv?.userVote === -1 ? 'var(--red)' : 'var(--dim)', transition: 'all .15s' }}
-                        >▼ {pv?.down ?? 0}</button>
-                        <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: 'var(--dim)' }}>{net > 0 ? `+${net}` : net}</span>
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', padding: '3px 10px', borderRadius: '4px', fontWeight: 500, marginBottom: '4px', display: 'inline-block', background: pick.status === 'win' ? 'rgba(34,197,94,0.1)' : pick.status === 'loss' ? 'rgba(248,113,113,0.1)' : 'rgba(255,255,255,0.05)', color: pick.status === 'win' ? 'var(--green)' : pick.status === 'loss' ? 'var(--red)' : 'var(--muted)', border: `1px solid ${pick.status === 'win' ? 'rgba(34,197,94,0.25)' : pick.status === 'loss' ? 'rgba(248,113,113,0.25)' : 'var(--border)'}` }}>
-                        {pick.status.toUpperCase()}
-                      </div>
-                      {pick.profit_loss !== null && (
-                        <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '12px', color: pick.profit_loss >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                          {pick.profit_loss >= 0 ? '+' : ''}{pick.profit_loss.toFixed(2)}u
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )
         )}
       </div>
     </div>

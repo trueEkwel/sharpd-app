@@ -77,6 +77,7 @@ export default function Leaderboard() {
   const [allEntries, setAllEntries] = useState<TabEntry[]>([])
   const [weekEntries, setWeekEntries] = useState<TabEntry[]>([])
   const [monthEntries, setMonthEntries] = useState<TabEntry[]>([])
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('alltime')
   const [filter, setFilter] = useState<'roi' | 'profit' | 'winrate'>('roi')
@@ -84,10 +85,15 @@ export default function Leaderboard() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: profiles }, { data: picks }, { data: follows }] = await Promise.all([
+      const { data: { user } } = await supabase.auth.getUser()
+
+      const [{ data: profiles }, { data: picks }, { data: follows }, { data: myFollows }] = await Promise.all([
         supabase.from('profiles').select('id, username, avatar_url'),
         supabase.from('picks').select('user_id, odds, units, status, profit_loss, created_at'),
         supabase.from('follows').select('following_id'),
+        user
+          ? supabase.from('follows').select('following_id').eq('follower_id', user.id)
+          : Promise.resolve({ data: [] }),
       ])
       if (!profiles || !picks) { setLoading(false); return }
 
@@ -95,6 +101,11 @@ export default function Leaderboard() {
       for (const f of follows ?? []) {
         followerMap[f.following_id] = (followerMap[f.following_id] ?? 0) + 1
       }
+
+      const profileIdToUsername: Record<string, string> = {}
+      for (const p of profiles) profileIdToUsername[p.id] = p.username
+      const followedSet = new Set((myFollows ?? []).map(f => profileIdToUsername[f.following_id]).filter(Boolean))
+      setFollowedIds(followedSet)
 
       const now = new Date()
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -114,7 +125,7 @@ export default function Leaderboard() {
     if (tab === 'month') return [...monthEntries].filter(e => e.settledPicks >= MIN_MONTH).sort((a, b) => b.roi - a.roi)
     if (tab === 'streak') return [...allEntries].filter(e => e.currentStreak >= MIN_STREAK).sort((a, b) => b.currentStreak - a.currentStreak)
     if (tab === 'last10') return [...allEntries].filter(e => e.settledPicks >= MIN_LAST10).sort((a, b) => b.last10Roi - a.last10Roi)
-    if (tab === 'followed') return [...allEntries].filter(e => e.followerCount > 0).sort((a, b) => b.followerCount - a.followerCount)
+    if (tab === 'followed') return [...allEntries].filter(e => followedIds.size > 0 && followedIds.has(e.username)).sort((a, b) => b.roi - a.roi)
     return []
   }
 
@@ -130,7 +141,7 @@ export default function Leaderboard() {
     { id: 'followed', label: 'Most Followed' },
   ]
 
-  const minLabel = tab === 'alltime' ? `Min. ${MIN_ALL} settled picks` : tab === 'week' ? `Min. ${MIN_WEEK} settled this week` : tab === 'month' ? `Min. ${MIN_MONTH} settled this month` : tab === 'streak' ? `Min. ${MIN_STREAK}-win streak` : tab === 'last10' ? `Min. ${MIN_LAST10} settled picks` : 'Ranked by followers'
+  const minLabel = tab === 'alltime' ? `Min. ${MIN_ALL} settled picks` : tab === 'week' ? `Min. ${MIN_WEEK} settled this week` : tab === 'month' ? `Min. ${MIN_MONTH} settled this month` : tab === 'streak' ? `Min. ${MIN_STREAK}-win streak` : tab === 'last10' ? `Min. ${MIN_LAST10} settled picks` : 'Predictors you follow · ranked by ROI'
 
   return (
     <div style={{ minHeight: '100vh' }}>
@@ -186,7 +197,7 @@ export default function Leaderboard() {
             <div style={{ fontSize: '40px', marginBottom: '16px' }}>◈</div>
             <p style={{ fontWeight: 600, fontSize: '20px', marginBottom: '8px' }}>No Predictors Ranked Yet</p>
             <p style={{ color: 'var(--muted)', fontSize: '14px', marginBottom: '28px', lineHeight: '1.6' }}>
-              Be the first to post 5 picks and claim the #1 spot
+              {tab === 'followed' ? 'Follow some predictors to see their rankings here' : 'Be the first to post a pick and claim the #1 spot'}
             </p>
             <Link href="/signup" className="btn-pill btn-primary">Start tracking</Link>
           </div>
