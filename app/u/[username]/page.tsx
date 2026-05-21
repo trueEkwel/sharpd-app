@@ -9,6 +9,7 @@ import { useParams } from 'next/navigation'
 import { Nav } from '@/components/Nav'
 import { Avatar } from '@/components/Avatar'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { calculateBadges, type Badge } from '@/lib/badges'
 
 type Profile = { id: string; username: string; display_name: string; bio: string | null; created_at: string; avatar_url: string | null }
 type Pick = { id: string; match_name: string; market: string; odds: number; units: number; status: string; created_at: string; competition: string | null; analysis: string | null; profit_loss: number | null; match_start: string }
@@ -34,6 +35,8 @@ export default function PublicProfile() {
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({})
   const [pickVotes, setPickVotes] = useState<Record<string, VoteState>>({})
   const [commentVotes, setCommentVotes] = useState<Record<string, CommentVoteState>>({})
+  const [badges, setBadges] = useState<Badge[]>([])
+  const [rank, setRank] = useState<number | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -56,9 +59,32 @@ export default function PublicProfile() {
       ])
 
       setProfile(profileData)
-      setPicks(picksData || [])
+      const loadedPicks = picksData || []
+      setPicks(loadedPicks)
       setFollowerCount(followerCnt ?? 0)
       setFollowingCount(followingCnt ?? 0)
+
+      setBadges(calculateBadges(loadedPicks))
+
+      // Compute rank: fetch all picks for all users, compare ROI
+      const { data: allPicks } = await supabase.from('picks').select('user_id, units, status, profit_loss')
+      if (allPicks) {
+        const userMap: Record<string, { staked: number; profit: number; settled: number }> = {}
+        for (const p of allPicks) {
+          if (!userMap[p.user_id]) userMap[p.user_id] = { staked: 0, profit: 0, settled: 0 }
+          if (p.status !== 'pending') {
+            userMap[p.user_id].staked += p.units
+            userMap[p.user_id].profit += p.profit_loss ?? 0
+            userMap[p.user_id].settled += 1
+          }
+        }
+        const rois = Object.entries(userMap)
+          .filter(([, v]) => v.settled >= 5 && v.staked > 0)
+          .map(([id, v]) => ({ id, roi: (v.profit / v.staked) * 100 }))
+          .sort((a, b) => b.roi - a.roi)
+        const myIdx = rois.findIndex(r => r.id === profileData.id)
+        if (myIdx >= 0) setRank(myIdx + 1)
+      }
 
       if (userId && userId !== profileData.id) {
         const { data: followRow } = await supabase
@@ -194,6 +220,19 @@ export default function PublicProfile() {
   const roi = totalUnitsStaked > 0 ? ((totalProfit / totalUnitsStaked) * 100).toFixed(1) : '—'
   const avgOdds = totalPicks > 0 ? (picks.reduce((sum, p) => sum + p.odds, 0) / totalPicks).toFixed(2) : '—'
 
+  const sortedSettled = [...settledPicks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  let currentStreak = 0
+  for (const p of sortedSettled) {
+    if (p.status === 'win') currentStreak++
+    else break
+  }
+  let bestStreak = 0
+  let tempStreak = 0
+  for (const p of [...settledPicks].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())) {
+    if (p.status === 'win') { tempStreak++; bestStreak = Math.max(bestStreak, tempStreak) }
+    else tempStreak = 0
+  }
+
   const chartData = [...picks]
     .filter(p => p.status !== 'pending' && p.profit_loss !== null)
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
@@ -252,6 +291,15 @@ export default function PublicProfile() {
                 )}
               </div>
               {profile?.bio && <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6', marginBottom: '8px' }}>{profile.bio}</p>}
+              {badges.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  {badges.map(b => (
+                    <span key={b.id} title={b.description} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '999px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', border: '1px solid', borderColor: `${b.color}40`, background: `${b.color}15`, color: b.color, cursor: 'default' }}>
+                      {b.emoji} {b.name}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: 'var(--dim)', margin: 0 }}>
                   Member since {new Date(profile?.created_at || '').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
@@ -266,6 +314,9 @@ export default function PublicProfile() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
               <div style={{ padding: '6px 12px', background: 'var(--green-bg)', border: '1px solid var(--green-border)', borderRadius: '8px', fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--green)', letterSpacing: '.05em', fontWeight: 500 }}>◈ PUBLIC RECORD</div>
+              {rank !== null && (
+                <div style={{ padding: '5px 10px', background: 'rgba(192,160,96,0.1)', border: '1px solid rgba(192,160,96,0.3)', borderRadius: '8px', fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#C0A060', letterSpacing: '.05em', fontWeight: 500 }}>#{rank} ALL TIME</div>
+              )}
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={handleShare} style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontFamily: 'var(--font-geist-mono)', cursor: 'pointer', border: '1px solid var(--border2)', background: copied ? 'var(--green-bg)' : 'var(--bg3)', color: copied ? 'var(--green)' : 'var(--muted)', transition: 'all .2s' }}>
                   {copied ? '✓ Copied!' : '⎘ Copy'}
@@ -279,17 +330,30 @@ export default function PublicProfile() {
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
           {[
             { label: 'Picks', value: totalPicks.toString() },
             { label: 'Winrate', value: winrate === '—' ? '—' : `${winrate}%` },
             { label: 'ROI', value: roi === '—' ? '—' : `${Number(roi) >= 0 ? '+' : ''}${roi}%` },
             { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u` },
-            { label: 'Avg Odds', value: avgOdds },
           ].map(stat => (
             <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
               <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{stat.label}</div>
               <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '18px', fontWeight: 500, color: stat.label === 'ROI' || stat.label === 'Units P/L' ? (stat.value.startsWith('+') ? 'var(--green)' : stat.value.startsWith('-') ? 'var(--red)' : 'var(--text)') : 'var(--text)' }}>
+                {stat.value}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
+          {[
+            { label: 'Avg Odds', value: avgOdds },
+            { label: 'Win Streak', value: settledPicks.length > 0 ? `${currentStreak}W` : '—' },
+            { label: 'Best Streak', value: bestStreak > 0 ? `${bestStreak}W` : '—' },
+          ].map(stat => (
+            <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
+              <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{stat.label}</div>
+              <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '18px', fontWeight: 500, color: stat.label === 'Win Streak' && currentStreak >= 3 ? 'var(--green)' : 'var(--text)' }}>
                 {stat.value}
               </div>
             </div>
