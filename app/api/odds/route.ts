@@ -61,9 +61,16 @@ export async function GET(request: NextRequest) {
     const games: any[] = await res.json()
     if (!Array.isArray(games)) return NextResponse.json({ found: false, markets: {} })
 
+    console.log(`[odds] sportKey=${sportKey} events=${games.length}`)
+    console.log(`[odds] searching for: home="${normalise(home)}" away="${normalise(away)}"`)
+    games.slice(0, 3).forEach((g, i) =>
+      console.log(`[odds] event[${i}]: home="${g.home_team}" away="${g.away_team}"`)
+    )
+
     const game = games.find(g =>
       teamMatch(g.home_team || '', home) && teamMatch(g.away_team || '', away)
     )
+    console.log(`[odds] match found: ${game ? `${game.home_team} vs ${game.away_team}` : 'none'}`)
 
     if (!game) return NextResponse.json({ found: false, markets: {} })
 
