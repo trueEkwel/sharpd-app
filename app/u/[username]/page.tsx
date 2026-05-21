@@ -272,7 +272,7 @@ export default function PublicProfile() {
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '100px 24px 60px' }}>
 
         {/* Profile header */}
-        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px', marginBottom: '16px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ background: 'linear-gradient(135deg, var(--bg2) 0%, var(--bg3) 100%)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px', marginBottom: '16px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(34,197,94,0.4), transparent)' }} />
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap' }}>
             <Avatar url={profile?.avatar_url} username={profile?.username || ''} size={56} />
@@ -292,12 +292,15 @@ export default function PublicProfile() {
               </div>
               {profile?.bio && <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6', marginBottom: '8px' }}>{profile.bio}</p>}
               {badges.length > 0 && (
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                  {badges.map(b => (
-                    <span key={b.id} title={b.description} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '999px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', border: '1px solid', borderColor: `${b.color}40`, background: `${b.color}15`, color: b.color, cursor: 'default' }}>
-                      {b.emoji} {b.name}
-                    </span>
-                  ))}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '6px' }}>Achievements</div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {badges.map(b => (
+                      <span key={b.id} title={b.description} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '999px', fontSize: '11px', fontFamily: 'var(--font-geist-mono)', border: '1px solid', borderColor: `${b.color}40`, background: `${b.color}15`, color: b.color, cursor: 'default' }}>
+                        {b.emoji} {b.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -332,13 +335,15 @@ export default function PublicProfile() {
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
           {[
-            { label: 'Picks', value: totalPicks.toString() },
-            { label: 'Winrate', value: winrate === '—' ? '—' : `${winrate}%` },
-            { label: 'ROI', value: roi === '—' ? '—' : `${Number(roi) >= 0 ? '+' : ''}${roi}%` },
-            { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u` },
+            { label: 'Picks', value: totalPicks.toString(), icon: '📊' },
+            { label: 'Winrate', value: winrate === '—' ? '—' : `${winrate}%`, icon: '🎯' },
+            { label: 'ROI', value: roi === '—' ? '—' : `${Number(roi) >= 0 ? '+' : ''}${roi}%`, icon: '📈' },
+            { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u`, icon: '💰' },
           ].map(stat => (
             <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-              <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{stat.label}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                <span style={{ fontSize: '10px' }}>{stat.icon}</span>{stat.label}
+              </div>
               <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '18px', fontWeight: 500, color: stat.label === 'ROI' || stat.label === 'Units P/L' ? (stat.value.startsWith('+') ? 'var(--green)' : stat.value.startsWith('-') ? 'var(--red)' : 'var(--text)') : 'var(--text)' }}>
                 {stat.value}
               </div>
@@ -347,12 +352,14 @@ export default function PublicProfile() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
           {[
-            { label: 'Avg Odds', value: avgOdds },
-            { label: 'Win Streak', value: settledPicks.length > 0 ? `${currentStreak}W` : '—' },
-            { label: 'Best Streak', value: bestStreak > 0 ? `${bestStreak}W` : '—' },
+            { label: 'Avg Odds', value: avgOdds, icon: '⚖️' },
+            { label: 'Win Streak', value: settledPicks.length > 0 ? `${currentStreak}W` : '—', icon: '🔥' },
+            { label: 'Best Streak', value: bestStreak > 0 ? `${bestStreak}W` : '—', icon: '⭐' },
           ].map(stat => (
             <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px' }}>
-              <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>{stat.label}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                <span style={{ fontSize: '10px' }}>{stat.icon}</span>{stat.label}
+              </div>
               <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '18px', fontWeight: 500, color: stat.label === 'Win Streak' && currentStreak >= 3 ? 'var(--green)' : 'var(--text)' }}>
                 {stat.value}
               </div>
@@ -387,7 +394,11 @@ export default function PublicProfile() {
           </div>
 
           {picks.length === 0 ? (
-            <div style={{ padding: '60px 20px', textAlign: 'center' }}><p style={{ color: 'var(--muted)', fontSize: '14px' }}>No picks posted yet.</p></div>
+            <div style={{ padding: '70px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: '40px', marginBottom: '14px' }}>👀</div>
+              <p style={{ fontWeight: 600, fontSize: '16px', marginBottom: '8px' }}>No picks posted yet</p>
+              <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6' }}>This predictor is just getting started — check back soon</p>
+            </div>
           ) : (
             picks.map(pick => {
               const pickComments = comments[pick.id] || []
@@ -395,7 +406,7 @@ export default function PublicProfile() {
               const pv = pickVotes[pick.id]
               const net = (pv?.up ?? 0) - (pv?.down ?? 0)
               return (
-                <div key={pick.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <div key={pick.id} style={{ borderBottom: '1px solid var(--border)', borderLeft: `4px solid ${pick.status === 'win' ? '#22C55E' : pick.status === 'loss' ? '#F87171' : 'transparent'}` }}>
                   <div style={{ padding: '16px 20px' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>

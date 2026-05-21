@@ -44,6 +44,7 @@ export function Nav() {
           <Link href="/leaderboard" className="nav-link">Leaderboard</Link>
           {user ? (
             <>
+              <Link href="/dashboard" className="nav-link">Dashboard</Link>
               <Link href="/feed" className="nav-link">Feed</Link>
               <Link href="/settings" className="nav-link">Settings</Link>
               <Link href={`/u/${user.username}`} style={{ fontSize: '13px', color: 'var(--muted)', fontFamily: 'var(--font-geist-mono)', textDecoration: 'none' }}>
@@ -82,6 +83,7 @@ export function Nav() {
           <Link href="/leaderboard" className="nav-link" onClick={close}>Leaderboard</Link>
           {user ? (
             <>
+              <Link href="/dashboard" className="nav-link" onClick={close}>Dashboard</Link>
               <Link href="/feed" className="nav-link" onClick={close}>Feed</Link>
               <Link href={`/u/${user.username}`} className="nav-link" onClick={close}>@{user.username} ↗</Link>
               <Link href="/settings" className="nav-link" onClick={close}>Settings</Link>

@@ -177,16 +177,27 @@ export default function Dashboard() {
           </p>
         </div>
 
+        {totalPicks === 0 && (
+          <div style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.07) 0%, rgba(34,197,94,0.02) 100%)', border: '1px solid var(--green-border)', borderRadius: '16px', padding: '36px 32px', marginBottom: '32px', textAlign: 'center' }}>
+            <div style={{ fontSize: '36px', marginBottom: '12px' }}>👋</div>
+            <h2 style={{ fontSize: '22px', marginBottom: '8px' }}>Welcome to Sharpd</h2>
+            <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.7', marginBottom: '24px', maxWidth: '380px', margin: '0 auto 24px' }}>
+              Build your verified sports prediction record. Every pick is timestamped and public — no edits, no deletes. Your reputation earns itself.
+            </p>
+            <Link href="/pick/new" className="btn-pill btn-primary" style={{ fontSize: '14px' }}>Post your first pick →</Link>
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '32px' }}>
           {[
-            { label: 'Total Picks', value: totalPicks.toString() },
-            { label: 'Winrate', value: winrate === '—' ? '—' : `${winrate}%` },
-            { label: 'ROI', value: roi === '—' ? '—' : `${Number(roi) >= 0 ? '+' : ''}${roi}%` },
-            { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u` },
+            { label: 'Total Picks', value: totalPicks.toString(), icon: '📊', topColor: 'var(--border)' },
+            { label: 'Winrate', value: winrate === '—' ? '—' : `${winrate}%`, icon: '🏆', topColor: 'var(--border)' },
+            { label: 'ROI', value: roi === '—' ? '—' : `${Number(roi) >= 0 ? '+' : ''}${roi}%`, icon: '📈', topColor: roi !== '—' ? (Number(roi) >= 0 ? '#22C55E' : '#F87171') : 'var(--border)' },
+            { label: 'Units P/L', value: totalProfit === 0 && totalPicks === 0 ? '—' : `${totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}u`, icon: '💰', topColor: totalPicks > 0 ? (totalProfit > 0 ? '#22C55E' : totalProfit < 0 ? '#F87171' : 'var(--border)') : 'var(--border)' },
           ].map(stat => (
-            <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-              <div style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                {stat.label}
+            <div key={stat.label} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', borderTop: `2px solid ${stat.topColor}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: 'var(--dim)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                <span style={{ fontSize: '11px' }}>{stat.icon}</span>{stat.label}
               </div>
               <div style={{
                 fontFamily: 'var(--font-geist-mono)', fontSize: '22px', fontWeight: 500,
@@ -232,23 +243,23 @@ export default function Dashboard() {
           </div>
 
           {picks.length === 0 ? (
-            <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', marginBottom: '12px' }}>◈</div>
-              <p style={{ fontWeight: 500, marginBottom: '8px' }}>No picks yet</p>
-              <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '24px' }}>
-                Post your first pick and start building your verified record.
+            <div style={{ padding: '70px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: '40px', marginBottom: '14px' }}>📋</div>
+              <p style={{ fontWeight: 600, fontSize: '18px', marginBottom: '8px' }}>Your Record Starts Here</p>
+              <p style={{ color: 'var(--muted)', fontSize: '14px', lineHeight: '1.6', marginBottom: '24px' }}>
+                Post your first pick and begin building your verified reputation
               </p>
-              <Link href="/pick/new" className="btn-pill btn-primary">Post first pick</Link>
+              <Link href="/pick/new" className="btn-pill btn-primary">Post your first pick →</Link>
             </div>
           ) : (
             picks.map(pick => (
-              <div key={pick.id} style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <div key={pick.id} style={{ padding: '20px', borderBottom: '1px solid var(--border)', borderLeft: `4px solid ${pick.status === 'win' ? '#22C55E' : pick.status === 'loss' ? '#F87171' : 'transparent'}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: '13px', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {pick.match_name}
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--dim)' }}>
                       {pick.market} · {pick.odds} · {pick.units}u
                       {pick.competition ? ` · ${pick.competition}` : ''}
                     </div>
