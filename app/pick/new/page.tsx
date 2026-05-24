@@ -18,6 +18,25 @@ type Match = {
 type OddsMarket = { best: number; bookmakers: { name: string; price: number }[] }
 type OddsData = { found: boolean; markets: Record<string, OddsMarket> }
 
+const CONFLICT_GROUPS: string[][] = [
+  ['Home Win', 'Away Win', 'Draw', '1X', 'X2', '12'],
+  ['Over 0.5', 'Under 0.5'],
+  ['Over 1.5', 'Under 1.5'],
+  ['Over 2.5', 'Under 2.5'],
+  ['Over 3.5', 'Under 3.5'],
+  ['Over 4.5', 'Under 4.5'],
+  ['BTTS', 'BTTS No'],
+]
+
+function conflictingMarket(newMarket: string, existingMarket: string): boolean {
+  const nm = newMarket.trim().toLowerCase()
+  const em = existingMarket.trim().toLowerCase()
+  if (nm === em) return false // duplicate, not conflicting
+  return CONFLICT_GROUPS.some(
+    group => group.some(m => m.toLowerCase() === nm) && group.some(m => m.toLowerCase() === em)
+  )
+}
+
 const COMMON_MARKETS = [
   'Home Win', 'Away Win', 'Draw',
   'Over 1.5', 'Over 2.5', 'Over 3.5',
@@ -127,6 +146,21 @@ export default function NewPick() {
     if (!user) { router.push('/login'); return }
     const matchStart = new Date(selectedMatch.utcDate)
     if (matchStart <= new Date()) { setError('Match has already started — picks must be posted before kickoff.'); setLoading(false); return }
+
+    const { data: existingPicks } = await supabase
+      .from('picks')
+      .select('market')
+      .eq('user_id', user.id)
+      .eq('api_match_id', selectedMatch.id)
+      .eq('status', 'pending')
+    for (const pick of existingPicks || []) {
+      if (conflictingMarket(form.market, pick.market)) {
+        setError(`You already have a pick on this match that conflicts with "${pick.market}". You cannot pick both "${pick.market}" and "${form.market}" on the same game.`)
+        setLoading(false)
+        return
+      }
+    }
+
     const { error: insertError } = await supabase.from('picks').insert({
       user_id: user.id, sport: 'Football',
       match_name: `${selectedMatch.homeTeam} vs ${selectedMatch.awayTeam}`,
