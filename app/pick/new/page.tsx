@@ -45,6 +45,7 @@ export default function NewPick() {
   const [oddsData, setOddsData] = useState<OddsData | null>(null)
   const [oddsLoading, setOddsLoading] = useState(false)
   const [selectedOddsMarket, setSelectedOddsMarket] = useState<string | null>(null)
+  const [oddsLocked, setOddsLocked] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -108,10 +109,12 @@ export default function NewPick() {
     setSearchResults([])
     setOddsData(null)
     setSelectedOddsMarket(null)
+    setOddsLocked(false)
   }
 
   const selectOddsMarket = (market: string, best: number) => {
     setSelectedOddsMarket(market)
+    setOddsLocked(true)
     setForm(p => ({ ...p, market, odds: best.toFixed(2) }))
   }
 
@@ -247,16 +250,22 @@ export default function NewPick() {
           )}
 
           <div>
-            <label style={labelStyle}>Market / Pick</label>
-            <input list="markets" value={form.market} onChange={e => setForm(p => ({ ...p, market: e.target.value }))} placeholder="e.g. Over 2.5, Home Win, BTTS" required style={inputStyle} />
+            <label style={labelStyle}>
+              Market / Pick
+              {oddsLocked && <span style={{ marginLeft: '6px', fontSize: '10px', color: 'var(--green)', fontWeight: 400 }}>🔒 locked</span>}
+            </label>
+            <input list="markets" value={form.market} onChange={e => setForm(p => ({ ...p, market: e.target.value }))} placeholder="e.g. Over 2.5, Home Win, BTTS" required readOnly={oddsLocked} style={{ ...inputStyle, ...(oddsLocked ? lockedInputStyle : {}) }} />
             <datalist id="markets">{COMMON_MARKETS.map(m => <option key={m} value={m} />)}</datalist>
             <p style={{ fontSize: '11px', color: 'var(--dim)', marginTop: '5px', fontFamily: 'var(--font-geist-mono)' }}>Standard markets are auto-settled: Home Win, Away Win, Draw, Over/Under X.5, BTTS</p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={labelStyle}>Odds (decimal)</label>
-              <input type="number" step="0.01" min="1.01" value={form.odds} onChange={e => setForm(p => ({ ...p, odds: e.target.value }))} placeholder="e.g. 1.87" required style={inputStyle} />
+              <label style={labelStyle}>
+                Odds (decimal)
+                {oddsLocked && <span style={{ marginLeft: '6px', fontSize: '10px', color: 'var(--green)', fontWeight: 400 }}>🔒</span>}
+              </label>
+              <input type="number" step="0.01" min="1.01" value={form.odds} onChange={e => setForm(p => ({ ...p, odds: e.target.value }))} placeholder="e.g. 1.87" required readOnly={oddsLocked} style={{ ...inputStyle, ...(oddsLocked ? lockedInputStyle : {}) }} />
             </div>
             <div>
               <label style={labelStyle}>Units</label>
@@ -290,4 +299,7 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '12px 16px', background: 'var(--bg2)', border: '1px solid var(--border2)',
   borderRadius: '10px', color: 'var(--text)', fontSize: '14px', outline: 'none', fontFamily: 'var(--font-geist)',
+}
+const lockedInputStyle: React.CSSProperties = {
+  opacity: 0.7, cursor: 'not-allowed', borderColor: 'var(--green-border)',
 }
