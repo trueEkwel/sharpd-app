@@ -55,11 +55,16 @@ export async function GET(request: NextRequest) {
     const url = new URL(`https://api.the-odds-api.com/v4/sports/${sportKey}/odds`)
     url.searchParams.set('apiKey', process.env.ODDS_API_KEY || '')
     url.searchParams.set('regions', 'eu')
-    url.searchParams.set('markets', 'h2h,totals,btts')
+    url.searchParams.set('markets', 'h2h,totals')
     url.searchParams.set('oddsFormat', 'decimal')
 
+    console.log('[odds] fetching:', url.toString())
     const res = await fetch(url.toString(), { next: { revalidate: 300 } })
-    if (!res.ok) return NextResponse.json({ found: false, markets: {} })
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.log('[odds] error response:', errorText)
+      return NextResponse.json({ found: false, markets: {} })
+    }
 
     const games: any[] = await res.json()
     if (!Array.isArray(games)) return NextResponse.json({ found: false, markets: {} })
@@ -97,11 +102,6 @@ export async function GET(request: NextRequest) {
           for (const outcome of market.outcomes || []) {
             const line = outcome.point ?? outcome.description ?? ''
             const label = `${outcome.name} ${line}`.trim()
-            addOdds(markets, label, bName, outcome.price)
-          }
-        } else if (market.key === 'btts') {
-          for (const outcome of market.outcomes || []) {
-            const label = outcome.name === 'Yes' ? 'BTTS' : 'BTTS No'
             addOdds(markets, label, bName, outcome.price)
           }
         }
