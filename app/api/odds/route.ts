@@ -30,7 +30,7 @@ function addOdds(markets: Record<string, MarketOdds>, key: string, bookmakerName
 const STRIP_SUFFIXES = /\s+(fc|cf|afc|united|city|sc|ac|bc|if|bk|sk|fk|rfc)$/i
 
 function normalise(name: string): string {
-  return name.toLowerCase().replace(STRIP_SUFFIXES, '').trim()
+  return name.toLowerCase().replace(STRIP_SUFFIXES, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function teamMatch(a: string, b: string): boolean {
